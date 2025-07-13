@@ -278,7 +278,7 @@ fn inv_sub_bytes(mut state_array: [[u8;4];4])->[[u8;4];4]{
 
 }
 
-fn cipher(input_bytes:&Vec<u8>, input_key:&Vec<u8>)->Result<Vec<u8>, InvalidKeyLengthError>{
+pub fn cipher(input_bytes:&Vec<u8>, input_key:&Vec<u8>)->Result<Vec<u8>, InvalidKeyLengthError>{
     let mut deciding_const = 0;
     if input_key.len() == 24{
         deciding_const = 1;
@@ -311,7 +311,7 @@ fn cipher(input_bytes:&Vec<u8>, input_key:&Vec<u8>)->Result<Vec<u8>, InvalidKeyL
     Result::Ok(out)
 }
 
-fn inv_cipher( input_bytes:&Vec<u8>,input_key:&Vec<u8>)->Result<Vec<u8>, InvalidKeyLengthError>{
+pub fn inv_cipher( input_bytes:&Vec<u8>,input_key:&Vec<u8>)->Result<Vec<u8>, InvalidKeyLengthError>{
     let mut deciding_const = 0;
     if input_key.len() == 24{
         deciding_const = 1;
