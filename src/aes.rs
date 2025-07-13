@@ -20,7 +20,7 @@ use crate::{constants::*, helper::*};
 
 
 #[derive(Debug, Clone)]
-struct InvalidKeyLengthError{
+pub struct InvalidKeyLengthError{
     message:String
 }
 
