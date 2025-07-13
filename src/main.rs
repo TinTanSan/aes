@@ -1,11 +1,12 @@
 use std::error::Error;
+use std::io::Read;
 use std::{fmt};
 
 use crate::constants::{INV_S_BOX, RCON_VALUES, S_BOX};
 
 
 
-use crate::helper::{decode_hex_string};
+use crate::helper::{decode_hex_string, encode_hex_string};
 use crate::{helper::{xor_vec}};
 // mod aes;
 mod constants;
@@ -154,7 +155,6 @@ fn make_keys(words:Vec<[u8;4]>, key_len_bytes:usize)->Result<Vec<[[u8; 4]; 4]>, 
         32 => 15,  // AES-256: rounds 0-14
         _ => unreachable!(),
     };
-    
     if keys.len() != expected_keys {
         return Err(InvalidKeyLengthError::new(
             format!("Expected {} round keys for {}-byte key, but got {}", 
@@ -208,33 +208,35 @@ fn mix_cols(state_array: [[u8;4];4])->[[u8;4];4]{
     new_state_array
 }
 
+const inv_mix_col_matrix:[[u8;4];4] = [[0x0e, 0x0b, 0x0d, 0x09],[0x09,0x0e, 0x0b, 0x0d],[0x0d, 0x09, 0x0e, 0x0b],[0x0b,0x0d,0x09,0x0e]];
+
 fn inv_mix_cols(state_array: [[u8;4];4])->[[u8;4];4]{
     let mut new_state_array = [[0u8;4];4];
     for col in 0..4
     {
         new_state_array[0][col] = 
-            mul_gf_8(0x0e, state_array[0][col]) ^ 
-            mul_gf_8(0x0b, state_array[1][col]) ^ 
-            mul_gf_8(0x0d, state_array[2][col]) ^ 
-            mul_gf_8(0x09, state_array[3][col]);
+            mul_gf_8(inv_mix_col_matrix[0][0], state_array[0][col]) ^ 
+            mul_gf_8(inv_mix_col_matrix[0][1], state_array[1][col]) ^ 
+            mul_gf_8(inv_mix_col_matrix[0][2], state_array[2][col]) ^ 
+            mul_gf_8(inv_mix_col_matrix[0][3], state_array[3][col]);
         
         new_state_array[1][col] = 
-            mul_gf_8(0x09, state_array[0][col]) ^
-            mul_gf_8(0x0e, state_array[1][col]) ^ 
-            mul_gf_8(0x0b, state_array[2][col]) ^ 
-            mul_gf_8(0x0d, state_array[3][col]); 
+            mul_gf_8(inv_mix_col_matrix[1][0], state_array[0][col]) ^
+            mul_gf_8(inv_mix_col_matrix[1][1], state_array[1][col]) ^ 
+            mul_gf_8(inv_mix_col_matrix[1][2], state_array[2][col]) ^ 
+            mul_gf_8(inv_mix_col_matrix[1][3], state_array[3][col]); 
             
         new_state_array[2][col] = 
-            mul_gf_8(0x0d, state_array[0][col]) ^ 
-            mul_gf_8(0x09, state_array[1][col]) ^
-            mul_gf_8(0x0e, state_array[2][col]) ^ 
-            mul_gf_8(0x0b, state_array[3][col]);
+            mul_gf_8(inv_mix_col_matrix[2][0], state_array[0][col]) ^ 
+            mul_gf_8(inv_mix_col_matrix[2][1], state_array[1][col]) ^
+            mul_gf_8(inv_mix_col_matrix[2][2], state_array[2][col]) ^ 
+            mul_gf_8(inv_mix_col_matrix[2][3], state_array[3][col]);
         
         new_state_array[3][col] = 
-            mul_gf_8(0x0b, state_array[0][col]) ^ 
-            mul_gf_8(0x0d, state_array[1][col]) ^ 
-            mul_gf_8(0x09, state_array[2][col]) ^
-            mul_gf_8(0x0e, state_array[3][col]); 
+            mul_gf_8(inv_mix_col_matrix[3][0], state_array[0][col]) ^ 
+            mul_gf_8(inv_mix_col_matrix[3][1], state_array[1][col]) ^ 
+            mul_gf_8(inv_mix_col_matrix[3][2], state_array[2][col]) ^
+            mul_gf_8(inv_mix_col_matrix[3][3], state_array[3][col]); 
     }
     
     new_state_array
@@ -285,27 +287,16 @@ fn cipher(input_bytes:&Vec<u8>, input_key:&Vec<u8>)->Result<Vec<u8>, InvalidKeyL
     let mut states = input_bytes.chunks_exact(16).map(|x: &[u8]| make_state(x.try_into().unwrap()) ).collect::<Vec<[[u8;4];4]>>();
     // in future we should look to see about parallelisation of the states through the cipher
     for i in 0..states.len(){    
-        println!("state array idx: {i}");
-        println!("input state: {:02x?}", states[i]);
         states[i] = add_round_key(states[i], &keys[0]);
-        println!("after add round key {:02x?}", states[i]);
         for round in 1..nr{
-            println!("round: {round}");
             states[i] = sub_bytes(states[i]);
-            println!("after sub bytes {:02x?}", states[i]);
             states[i] = shift_rows(states[i]);
-            println!("after shift rows {:02x?}", states[i]);
             states[i] = mix_cols(states[i]);
-            println!("after mix cols {:02x?}", states[i]);
             states[i] = add_round_key(states[i], &keys[round]);
-            println!("after add round key {:02x?}", states[i]);
         }
         states[i] = sub_bytes(states[i]);
-        println!("after sub bytes {:02x?}", states[i]);
         states[i] = shift_rows(states[i]);
-        println!("after shift rows {:02x?}", states[i]);
         states[i] = add_round_key(states[i], &keys[nr]);
-        println!("after add round key {:02x?}", states[i]);
     }
     let mut out = vec![];
     for x in 0..states.len(){
@@ -329,31 +320,18 @@ fn inv_cipher( input_bytes:&Vec<u8>,input_key:&Vec<u8>)->Result<Vec<u8>, Invalid
     let mut states = input_bytes.chunks_exact(16).map(|x: &[u8]| make_state(x.try_into().unwrap()) ).collect::<Vec<[[u8;4];4]>>();
     
     for i in 0..states.len(){    
-        println!("state array idx: {i}");
-        println!("input state: {:02x?}", states[i]);
+
         states[i] = add_round_key(states[i], &keys[nr]);
-        println!("round key value {:02x?}", &keys[nr]);
-        println!("after add round key {:02x?}", states[i]);
         
         for round in (1..nr).rev(){
-            println!("round: {round}");
-            println!("input state: {:02x?}", states[i]);
             states[i] = inv_shift_rows(states[i]);
-            println!("after inv shft rows {:02x?}", states[i]);
             states[i] = inv_sub_bytes(states[i]);
-            println!("after inv subb rows {:02x?}", states[i]);
-            println!("round key value {:02x?}", &keys[nr]);
             states[i] = add_round_key(states[i], &keys[round]);
-            println!("after add round key {:02x?}", states[i]);
             states[i] = inv_mix_cols(states[i]);
-            println!("after inv mixc rows {:02x?}", states[i]);
         }
         states[i] = inv_shift_rows(states[i]);
-        println!("after inv shft rows {:02x?}", states[i]);
         states[i] = inv_sub_bytes(states[i]);
-        println!("after inv subb rows {:02x?}", states[i]);
         states[i] = add_round_key(states[i], &keys[0]);
-        println!("after add round key {:02x?}", states[i]);
     }
     let mut out = vec![];
     for x in 0..states.len(){
@@ -367,17 +345,57 @@ fn inv_cipher( input_bytes:&Vec<u8>,input_key:&Vec<u8>)->Result<Vec<u8>, Invalid
 
 
 fn main(){
-    let key =   decode_hex_string("00000000000000000000000000000000");
-    let input = decode_hex_string("80000000000000000000000000000000");
-
-    let result =  cipher(&input, &key).expect("Wrong key length");
-    println!("result: {:02X?}", result);
-    let key_1 = decode_hex_string("2B7E1516 28AED2A6 ABF71588 09CF4F3C");
-    // let ct = decode_hex_string("3AD77BB4 0D7A3660 A89ECAF3 2466EF97F5D3D585 03B9699D E785895A 96FDBAAF43B1CD7F 598ECE23 881B00E3 ED0306887B0C785E 27E8AD3F 82232071 04725DD4");
     
-    // let original = inv_cipher(&ct, &key_1).expect("Wrong key length");
-    // println!("{:02X?}", original);
-    // assert_eq!(original, input)
-
+    
+    
 }
 
+
+// this module should soon have its own file
+#[cfg(test)]
+mod tests{
+
+    #[test]
+
+    fn ecb_mode_tests(){
+        use std::io::Read;
+
+        let mut result = std::fs::OpenOptions::new().read(true).write(false).open(".test_vectors/ECBVarTxt128.txt").expect("unable to read file");
+        let mut file_content = String::new();
+        result.read_to_string(&mut file_content).expect("unable to read from file");
+        
+        //get rid of the metadata at the start of the file 
+        let split = file_content.split("[ENCRYPT]").collect::<Vec<&str>>()[1..].to_vec().join("");
+        let split = split.split("[DECRYPT]").collect::<Vec<&str>>();
+        let enc_parts = split[0].to_string();
+        let enc_split = enc_parts.split("COUNT = ").collect::<Vec<&str>>()[1..].to_vec().join("");
+        let enc_split = enc_split.split("\n").collect::<Vec<&str>>().iter().map(|x| x.trim()).collect::<Vec<&str>>();
+        // enc_split contains a repeated pattern of 5 things, a number for the test, key to use for the test, a plain text to use for the test, the 
+        // output cipher text, and an empty element which represents the \r character which remained after the split on \n because the break line used was a \r\n
+        for x in 0..enc_split.len() /5{
+            
+            // its called a count number in the file but should really be called a test number or something more representative
+
+            use crate::{cipher, helper::{decode_hex_string, encode_hex_string}, inv_cipher};
+            let test_num = enc_split[x*5].parse::<u8>().expect("unable to unwrap count number");
+            println!("TEST #{test_num}");
+            // we specifically specify split on "KEY = " and so on so that we know for sure it found those patterns in the places we expected
+            // the " = " pattern could have been used just as easily but doesn't actually prove that we go the thing we needed.
+            let key = enc_split[(x*5)+1].split("KEY = ").collect::<Vec<&str>>()[1].to_string();
+            println!("\tKEY:                 {key}");
+            let pt = enc_split[(x*5)+2].split("PLAINTEXT = ").collect::<Vec<&str>>()[1].to_string();
+            println!("\tPLAINTEXT:           {pt}");
+            let ct = enc_split[(x*5)+3].split("CIPHERTEXT = ").collect::<Vec<&str>>()[1].to_string();
+            println!("\tEXPECTED CIPHERTEXT: {ct}");
+            let result = cipher(&decode_hex_string(&pt), &decode_hex_string(&key)).expect("invalid key length");
+            println!("\tRESULTED CIPHERTEXT: {}", &encode_hex_string(&result));
+            assert_eq!(encode_hex_string(&result), ct);
+            let inv_cip_result: Vec<u8> = inv_cipher(&result, &decode_hex_string(&key)).expect("invalid key length");
+            // assert that we got the plain text back after running the inverse cipher
+            println!("\tRESULTED PLAINTEXT:  {}", encode_hex_string(&inv_cip_result));
+            assert_eq!(encode_hex_string(&inv_cip_result), pt);
+        }
+    }
+
+
+}
