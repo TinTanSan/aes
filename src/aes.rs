@@ -3,22 +3,14 @@
     https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf
     and it's updated version
     https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf
+    
+    
+    official citation as recommended by NIST:
+    National Institute of Standards and Technology (2001) Advanced Encryption
+    Standard (AES). (Department of Commerce, Washington, D.C.), Federal Information Processing Standards Publication (FIPS) NIST FIPS 197-upd1, updated
+    May 9, 2023. https://doi.org/10.6028/NIST.FIPS.197-upd1
 */
 
-/*
-    functionality to be implemented:
-        key expansion
-            -round constants
-        add round key
-        convert input vector to state array
-
-        encrypt mode:
-            sub bytes
-                -rijndael substitution box
-            shift rows
-            mix columns
-        
-*/
 
 
 
@@ -29,7 +21,7 @@ pub fn s_byte(byte:u8)->u8{
     S_BOX[byte as usize]
 }
 
-
+/// byte substitution for all bytes in a vector using s_byte function on each byte
 pub fn vec_sub_bytes(mut input_vec:Vec<u8>)->Vec<u8>{
     for x in 0..input_vec.len(){
         input_vec[x] = s_byte(input_vec[x]);
@@ -58,15 +50,9 @@ pub fn shift_rows(state_array:Vec<Vec<u8>>)->Vec<Vec<u8>>{
 }
 
 pub fn add_round_key(mut state_array:Vec<Vec<u8>>, keys:Vec<Vec<u8>>)->Vec<Vec<u8>>{
-    /*
-    [5f, 57, f7, 1d]
-    [72, f5, be, b9]
-    [64, bc, 3b, f9]
-    [15, 92, 29, 1a]
- */
     for c in 0..4{
         let col = [state_array[0][c], state_array[1][c], state_array[2][c], state_array[3][c]];
-        let vals = xor_vec(col.to_vec(), keys[c].clone());
+        let vals = xor_vec(&col.to_vec(), &keys[c].clone());
         for x in 0..4{
             state_array[x][c] = vals[x];
         }
@@ -75,10 +61,8 @@ pub fn add_round_key(mut state_array:Vec<Vec<u8>>, keys:Vec<Vec<u8>>)->Vec<Vec<u
     state_array
 }
 
-pub fn key_expansion(input_key:Vec<u8>)->Vec<Vec<u8>>{
-    /*
-        With AES256 we require 14 + 1 round keys, 
-     */
+pub fn key_expansion(input_key:&Vec<u8>)->Vec<Vec<u8>>{
+    
     let mut i = 0;
     let mut ret:Vec<Vec<u8>> = vec![vec![0u8;4];60];
     while i <NK{
@@ -90,12 +74,12 @@ pub fn key_expansion(input_key:Vec<u8>)->Vec<Vec<u8>>{
         let mut temp = ret[i-1].to_vec();
         if i.rem_euclid(NK) == 0{
             temp = xor_vec(
-                    vec_sub_bytes(left_shift_bytes(temp, 1)), calc_rcon(i/NK).to_vec());
+                    &vec_sub_bytes(left_shift_bytes(temp, 1)), &calc_rcon(i/NK).to_vec());
         }
         else if NK > 6 && i.rem_euclid(NK) == 4{
             temp = vec_sub_bytes(temp);
         }
-        ret[i] = xor_vec(ret[i-NK].clone(), temp.clone());
+        ret[i] = xor_vec(&ret[i-NK].clone(), &temp);
         i+=1;
     }
     ret
@@ -125,9 +109,9 @@ pub fn mix_columns(mut state_array:Vec<Vec<u8>>)->Vec<Vec<u8>>{
 }
 
 
-pub fn encrypt(mut input_vec:Vec<u8>, input_key:Vec<u8>)->Vec<u8>{
-    let keys = key_expansion(input_key);
-    let mut state_array = convert_vec_to_state_array(input_vec);
+pub fn encrypt(mut input_vec:&Vec<u8>, input_key:&Vec<u8>)->Vec<u8>{
+    let keys = key_expansion(&input_key);
+    let mut state_array = convert_vec_to_state_array(&input_vec);
     state_array = add_round_key(state_array, keys[0..4].to_vec());
     for round in 1..NR{
         state_array = sub_bytes(state_array);
@@ -187,7 +171,7 @@ pub fn inverse_mix_columns(mut state_array:Vec<Vec<u8>>)->Vec<Vec<u8>>{
     state_array
 }
 
-pub fn decrypt(  input_vec:Vec<u8>,input_key:Vec<u8>)->Vec<u8>{
+pub fn decrypt(  input_vec:&Vec<u8>,input_key:&Vec<u8>)->Vec<u8>{
     let mut state_array = convert_vec_to_state_array(input_vec);
     let keys = key_expansion(input_key);
     state_array = add_round_key(state_array, keys[NR*NB..(NR+1)*NB].to_vec());
