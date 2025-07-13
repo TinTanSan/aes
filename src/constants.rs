@@ -4,11 +4,23 @@
     by a constant of 2, 3, 9, 11, 13, and 14 (required by the mix columns function)
 */
 
-pub const NK:usize = 8;
-pub const NR:usize = 14;
+pub const NK:usize = 4;
+pub const NR:usize = 10;
 pub const NB:usize = 4;
 
-pub const RCON_VALUES:[u8;10] = [0x00,0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B];
+pub const RCON_VALUES:[[u8;4];11] = [
+    [0x00,0,0,0 ],
+    [0x01,0,0,0 ],
+    [0x02,0,0,0 ],
+    [0x04,0,0,0 ],
+    [0x08,0,0,0 ],
+    [0x10,0,0,0 ],
+    [0x20,0,0,0 ],
+    [0x40,0,0,0 ],
+    [0x80,0,0,0 ],
+    [0x1B,0,0,0],
+    [0x36,0,0,0],
+    ];
 
 pub const S_BOX:[u8;256] =[
     //   00    01    02    03    04    05    06    07    08    09    0a    0b    0c    0d    0e    0f      
