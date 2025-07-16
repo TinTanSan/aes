@@ -3,37 +3,7 @@ mod aes;
 mod constants;
 mod helper;
 mod gcm;
-fn test_gf_mul_128(x:Vec<u8>, y:Vec<u8>)->Vec<u8>{
-    const R:u128 =  0xe1u128 << 120;
-    let mut result = 0u128;
-    let a = u128::from_be_bytes(x.as_slice().try_into().unwrap());
-    let mut b = u128::from_be_bytes(y.as_slice().try_into().unwrap());
-    println!("NOR: x: {a} | y: {b}");
-    println!("HEX: x:{a:x} | y:{b:x}");
-    println!("BIN: x:{a:b} \n y: {b:b}");
-    for i in 0..128{
-        println!("iteration: #{i}");
-        println!("cur: {result:x}");
-        // we do it this way around as to preserve the little-endian-ness required of bit strings in 
-        if ((a >> (127-i)) & 1) == 1{
-            println!("res XORred");
-            result ^= b;
-        }
-        // println!(" x_b:{:0128b}",(a >> i));
-        // println!(" res:{result:0128b}");
-        // println!(" y_b:{b:0128b}");
-        let is_reduction_required = (b & 1) == 1;
-        b >>=1;
-        if is_reduction_required{
-            println!("B reduced to {b:x}");
-            b ^=R;
-        }
-        
-        
-    }
-    
-    return result.to_be_bytes().to_vec();
-}
+
 
 fn test_ghash(string_x:&[u8], block_h:&[u8;16])->[u8;16]{
     let pad_len = if string_x.len() % 16 == 0 {
@@ -65,8 +35,6 @@ fn main(){
     // let result = test_ghash(&input.as_slice(), h.as_slice().try_into().unwrap());
     
     let test_mul = decode_hex_string("6f288b846e5fed9a18376829c86a6a16");
-    let result = test_gf_mul_128(test_mul, h);
-    println!("{:02x?}", &result);
     
 }
 

@@ -81,23 +81,24 @@ pub fn gm_2_128_slice(x:&[u8;16], y:&[u8;16])->[u8;16]{
 
 /// galois multiplication of two elements in the finite field GF(2^128) given 2 128 bit numbers x and y
 pub fn galois_multiplication_2_128(x:u128,y:u128)->u128{
-    const R:u128 =  0x87u128;
     let mut result = 0u128;
-    let mut a = x;
+    let a = x;
     let mut b = y;
-    for _ in 0..128{
-        if b &1 == 1{
-            result ^= a;
+    for i in 0..128{
+        // we do it this way around as to preserve the little-endian-ness required of bit strings in 
+        if ((a >> (127-i)) & 1) == 1{
+            result ^= b;
         }
-        let needs_reduction = (a & (1u128 << 127)) != 0;
-        a <<=1;
-        if needs_reduction{
-            a ^= R;
+        let is_reduction_required = (b & 1) == 1;
+        b >>=1;
+        if is_reduction_required{
+            b ^=R;
         }
-        b >>= 1;
+        
+        
     }
     
-    result
+    return result
 }
 
 
