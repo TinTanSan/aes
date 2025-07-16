@@ -82,25 +82,20 @@ pub fn inv_calc_mix_col_val(col:[u8;4], matrix_col_index:usize)->Option<u8>{
 
 #[allow(unused)]
 pub fn xor_vec(left:&Vec<u8>, right:&Vec<u8>)->Vec<u8>{
-    let mut left = left.clone();
-    let mut right = right.clone();
-    if left.len() < right.len(){
-        //push the extra bits as they are 
-        for _ in 0..right.len()-left.len(){
-            left.push(0);
-        }
-    }if right.len() < left.len(){
-        let diff_len = left.len() - right.len();
-        // time complexity 0(m) , m = difference in lengths
-        let mut front = (0..diff_len).map(|_|0).collect::<Vec<u8>>();
-        // below 3 time complexity = O(n) + O(n+m)
-        left.reverse();
-        left.append(&mut front);
-        left.reverse();
+    let mut l = left.clone();
+    let mut r = right.clone();
+    
+    let pad_len = l.len().abs_diff(r.len());
+    // apply right-padding to vectors based which one was longer, given we do things in big-endian order,
+    // the msb is on the right, so we pad after that
+    println!("SOFT WARNING: left and right vectors of xor_vec were not of equal length");
+    if l.len() < r.len(){
+        l.extend(vec![0u8;pad_len]);
+    }else if r.len() < l.len(){
+        r.extend(vec![0u8;pad_len]);
     }
-    let mut right = right.clone();
-    let mut left = left.clone();
-    return zip(left, right).map(|x| return x.0^x.1).collect::<Vec<u8>>();
+
+    return zip(l, r).map(|(x_i,y_i)| return x_i^y_i).collect::<Vec<u8>>();
 }
 
 
