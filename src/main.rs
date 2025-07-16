@@ -1,4 +1,4 @@
-use crate::{gcm::{galois_multiplication_2_128}, helper::{decode_hex_string}};
+use crate::{gcm::{galois_multiplication_2_128, ghash, incr32}, helper::{decode_hex_string, encode_hex_string}};
 mod aes;
 mod constants;
 mod helper;
@@ -31,10 +31,9 @@ fn test_ghash(string_x:&[u8], block_h:&[u8;16])->[u8;16]{
 
 fn main(){
     let h = decode_hex_string("b83b533708bf535d0aa6e52980d53b78");
-    // let input = decode_hex_string("6f288b846e5fed9a18376829c86a6a16");
-    // let result = test_ghash(&input.as_slice(), h.as_slice().try_into().unwrap());
-    
-    let test_mul = decode_hex_string("6f288b846e5fed9a18376829c86a6a16");
+    let input = decode_hex_string("6f288b846e5fed9a18376829c86a6a16");
+    let result = test_incr32(&h);
+    println!("{:02?}",encode_hex_string(&result));
     
 }
 
