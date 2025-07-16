@@ -120,16 +120,12 @@ pub fn ghash(h_block:u128, x:Vec<u8>)->u128{
     return y0;
 }
 
-fn incr32( block:&Vec<u8>)->Vec<u8>{
-    let mut left_alone_bits = block[4..block.len()].to_vec();
-    let u32_mid = u32::from_be_bytes(block[0..4].try_into().unwrap());
-    let mut incremented_bits:u64 = u64::from(u32_mid);
-    incremented_bits = (incremented_bits + 1).rem_euclid((2 as u64).pow(32));
-    let mut temp = incremented_bits.to_be_bytes().to_vec();
-    
-    temp = temp.split_off(4);
-    temp.append(&mut left_alone_bits);
-    return temp
+pub fn incr32(block:&Vec<u8>)->Vec<u8>{
+    assert!(block.len()%16 ==0);
+    let excess_len = block.len()-4;
+    let mut lower_bits = u32::from_be_bytes(block[(excess_len)..].try_into().unwrap());
+    lower_bits = (lower_bits + 1) % (0xffffffff);
+    return [block[0..excess_len].to_vec(), lower_bits.to_be_bytes().to_vec()].concat();
 }
 
 
