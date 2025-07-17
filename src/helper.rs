@@ -88,7 +88,10 @@ pub fn xor_vec(left:&Vec<u8>, right:&Vec<u8>)->Vec<u8>{
     let pad_len = l.len().abs_diff(r.len());
     // apply right-padding to vectors based which one was longer, given we do things in big-endian order,
     // the msb is on the right, so we pad after that
-    println!("SOFT WARNING: left and right vectors of xor_vec were not of equal length");
+    if l.len() != r.len(){
+        println!("SOFT WARNING: left and right vectors of xor_vec were not of equal length");
+    }
+    
     if l.len() < r.len(){
         l.extend(vec![0u8;pad_len]);
     }else if r.len() < l.len(){
