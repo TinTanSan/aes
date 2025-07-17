@@ -1,40 +1,20 @@
-use crate::{gcm::{galois_multiplication_2_128, ghash, incr32}, helper::{decode_hex_string, encode_hex_string}};
+use crate::{aes::cipher, gcm::{galois_multiplication_2_128, gcm_ae, incr32}, helper::{decode_hex_string, encode_hex_string, xor_vec}};
 mod aes;
 mod constants;
 mod helper;
 mod gcm;
 
 
-fn test_ghash(string_x:&[u8], block_h:&[u8;16])->[u8;16]{
-    let pad_len = if string_x.len() % 16 == 0 {
-        0  // No padding needed if already multiple of 16
-    } else {
-        16 - (string_x.len() % 16)
-    };
-
-    let mut x = string_x.to_vec();
-
-    x.extend(vec![0u8; pad_len]);
-
-    let mut y_0: [u8; 16] = [0u8;16];
-    for chunk in x.chunks_exact(16) {
-        let chunk_array: &[u8; 16] = chunk.try_into().unwrap();
-        for j in 0..16 {
-            y_0[j] ^= chunk_array[j];
-        }
-        y_0 = galois_multiplication_2_128(u128::from_be_bytes(y_0), u128::from_be_bytes(*block_h)).to_be_bytes();
-        println!("multiplied: {:02x?}", y_0)
-    }
-    y_0
-}
 
 
 fn main(){
-    let h = decode_hex_string("b83b533708bf535d0aa6e52980d53b78");
-    let input = decode_hex_string("6f288b846e5fed9a18376829c86a6a16");
-    let result = test_incr32(&h);
-    println!("{:02?}",encode_hex_string(&result));
+    let key: Vec<u8> = decode_hex_string("11ca26a3e3490f050372301b0d394c8b");
+    let iv: Vec<u8> = decode_hex_string("36");
+    let pt: Vec<u8> = decode_hex_string("6331cd4badf459182ceb3ee120");
+    let aad: Vec<u8> = decode_hex_string("a082139c1c90b6de9be9ef2391d7e3a1ff3b66080d15e342ed54c4ccc12f21e3b549b0c38d6e27e7f3cd6d3343681f04761b52a0b39758c498007eb65522a95f9c675311298631592ba8cc11b6b9074a18d5183e3e8306e63d09");
     
+    let result = gcm_ae(Some(key), Some(iv), pt, aad);
+    println!("iv: {:02x?} | ct: {:02x?} | tag: {:02x?} ", result.0, result.1, result.2);
 }
 
 
