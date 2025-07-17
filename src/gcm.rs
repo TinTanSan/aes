@@ -122,43 +122,36 @@ pub fn gctr(icb:&Vec<u8>, x: &Vec<u8>, key:&Vec<u8>)->Vec<u8>{
 
 
 
-pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<u8>, aad:Vec<u8>)->(Vec<u8>,Vec<u8>,u128){
+pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<u8>, aad:Vec<u8>, tag_len:usize)->(Vec<u8>,Vec<u8>,u128){
     let key = input_key.unwrap_or(make_key());
     let iv = input_iv.unwrap_or(make_iv(96));
     let h: Vec<u8> = encrypt(&vec![0u8;16], &key).expect("unable to encrypt initial hash block");
-    println!("H :{h:02x?}");
     let mut j_0 = iv.clone();
     let iv_len_bits = (iv.len() * 8) as u32;
     if iv_len_bits == 96{
         j_0.append(&mut vec![0u8,0u8,0u8,1u8]);
     }else{
         let s_bits = (128.0 * ((iv_len_bits as f32) / 128.0).ceil() - iv_len_bits as f32) as usize;
-        println!("s: {s_bits}");
         let mut padded_iv: Vec<u8> = iv.clone();
         padded_iv.append(&mut vec![0u8;(s_bits + 64 )/8]);
         padded_iv.append(&mut (iv_len_bits as u64).to_be_bytes().to_vec());
-        println!("{padded_iv:02x?}");
         j_0 = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), padded_iv).to_be_bytes().to_vec();
     }
-    println!("J_0:{:02X?}",&j_0);
     // c is the ciphertext
     let pt =  plain_text.clone();
-    println!("pt: {plain_text:02x?}");
     let cipher_text = gctr(&incr32(&j_0), &pt, &key);
-    println!("ct: {cipher_text:02X?}");
     let len_c = cipher_text.len()*8;
     let len_a = aad.len()*8;
     let u = 128 * (len_c as f32 / 128.0).ceil() as usize - len_c;
     let v = 128 * (len_a as f32/ 128.0).ceil() as usize - len_a;
-    println!("u:{u:?} v:{v:?}");
     let mut c_plus_aad = aad.clone();
-    c_plus_aad.append(&mut vec![0u8;v]);
+    c_plus_aad.append(&mut vec![0u8;v/8]);
     c_plus_aad.append(&mut cipher_text.clone());
-    c_plus_aad.append(&mut vec![0u8;u]);
-    c_plus_aad.append(&mut (aad.len() as u64).to_be_bytes().to_vec());
-    c_plus_aad.append(&mut (cipher_text.len() as u64).to_be_bytes().to_vec());
+    c_plus_aad.append(&mut vec![0u8;u/8]);
+    c_plus_aad.append(&mut (len_a as u64).to_be_bytes().to_vec());
+    c_plus_aad.append(&mut (len_c as u64).to_be_bytes().to_vec());
     let s = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), c_plus_aad).to_be_bytes().to_vec();
-    let tag = msb(&u128::from_be_bytes(gctr(&j_0,&s , &key).as_slice().try_into().unwrap()), 128 as usize);
+    let tag = msb(&u128::from_be_bytes(gctr(&j_0,&s , &key).as_slice().try_into().unwrap()), tag_len );
     return (iv,cipher_text, tag);
 
 }
