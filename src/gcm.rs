@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, iter::zip};
 
 use crate::{aes::cipher as encrypt, helper::{encode_hex_string, make_iv, make_key, xor_vec}};
 
@@ -45,39 +45,6 @@ fn lsb(block:&u128, bits_to_get:usize)->u128{
 
 // the irreducible polynomial for galois field multiplication
 const R:u128 = 0xe1 <<120;
-pub fn gm_2_128_slice(x:&[u8;16], y:&[u8;16])->[u8;16]{
-    let mut result = [0u8; 16];
-    let mut a = *x;
-    let mut b = *y;
-    let r_bytes =  R.to_be_bytes();
-    for  _ in 0..128{
-        if (b[15] &1) == 1{
-            for i in 0..16{
-                result[i] ^=a[i];
-            }
-        }
-        let mut carry = 0;
-        for i in (0..16).rev(){
-            let new_carry = (a[i] & r_bytes[i]) != 0;
-            a[i] = (a[i] << 1) | carry;
-            carry = new_carry as u8;
-        }
-        if carry == 1 {
-            a[15] ^= 0x87;
-        }
-        // Shift b right by 1 bit
-        let mut borrow = 0;
-        for i in 0..16 {
-            let new_borrow = (b[i] & 1) != 0;
-            b[i] = (b[i] >> 1) | (borrow << 7);
-            borrow = new_borrow as u8;
-        }
-    }
-    
-    
-    result
-}
-
 
 /// galois multiplication of two elements in the finite field GF(2^128) given 2 128 bit numbers x and y
 pub fn galois_multiplication_2_128(x:u128,y:u128)->u128{
@@ -102,22 +69,26 @@ pub fn galois_multiplication_2_128(x:u128,y:u128)->u128{
 }
 
 
-pub fn ghash(h_block:u128, x:Vec<u8>)->u128{
-    let mut y0 = 0u128;
-    for chunk in x.chunks_exact(16){
-        let chunk_padded = if chunk.len() < 16 {
-            let mut padded = [0u8; 16];
-            padded[..chunk.len()].copy_from_slice(chunk);
-            padded
-        } else {
-            chunk.try_into().unwrap()
-        };
-        let x_i_u128 = u128::from_be_bytes(chunk_padded.try_into().unwrap());
-        println!("ghash chunck xor {:02x?} | h_block: {h_block:02x?}", y0 ^x_i_u128);
-        let y1 = galois_multiplication_2_128(y0^x_i_u128,h_block);
-        y0=y1;
+pub fn ghash(h_block:u128, string_x:Vec<u8>)->u128{
+    let pad_len = if string_x.len() % 16 == 0 {
+        0  // No padding needed if already multiple of 16
+    } else {
+        16 - (string_x.len() % 16)
+    };
+
+    let mut x = string_x.to_vec();
+
+    x.extend(vec![0u8; pad_len]);
+
+    let mut y_0: [u8; 16] = [0u8;16];
+    for chunk in x.chunks_exact(16) {
+        let chunk_array: &[u8; 16] = chunk.try_into().unwrap();
+        for j in 0..16 {
+            y_0[j] ^= chunk_array[j];
+        }
+        y_0 = galois_multiplication_2_128(u128::from_be_bytes(y_0), h_block).to_be_bytes();
     }
-    return y0;
+    u128::from_be_bytes(y_0)
 }
 
 pub fn incr32(block:&Vec<u8>)->Vec<u8>{
@@ -129,30 +100,24 @@ pub fn incr32(block:&Vec<u8>)->Vec<u8>{
 }
 
 
-fn gctr(icb:&Vec<u8>, x: &Vec<u8>, key:&Vec<u8>)->Vec<u8>{
+pub fn gctr(icb:&Vec<u8>, x: &Vec<u8>, key:&Vec<u8>)->Vec<u8>{
     if x.len() == 0{
-        return vec![];
+        println!("SOFT WARNING x was empty");
+        return  vec![];
     }
-    let mut cur_counter: Vec<u8> = icb.clone();
-    let full_blocks = x.len() / 16;
-    let mut y: Vec<u8> = vec![];
-    for i in 0..full_blocks{
-        let cur_block = x[i*16.. (i+1)*16].to_vec();
-        println!("cur block is: {cur_block:02X?}");
-        cur_counter = incr32(&cur_counter);
-        let enc_block = encrypt(&cur_counter, &key).expect("invalid key length");
-        y.append(&mut xor_vec(&enc_block, &cur_block));
+    let n = ((x.len() as f32)/(16 as f32)).ceil() as usize;
+    let blocks = x.chunks(16).collect::<Vec<&[u8]>>();
+    let mut cb = vec![icb.clone()];
+    for i in 1..n{
+    
+        cb.push(incr32(&cb[i-1]));
     }
-    let remaining_len = x.len().rem_euclid(16);
-    if remaining_len > 0{
-        let partial_block = x[full_blocks*16..].to_vec();
-        cur_counter = incr32(&cur_counter);
-        let enc_block = encrypt(&cur_counter, &key).expect("invalid key length");
-        for byte_idx in 0..remaining_len {
-            y.push(partial_block[byte_idx] ^ enc_block[byte_idx]);
-        }
+    let mut y_blocks = vec![];
+    for i in 0..n{
+        
+        y_blocks.append(&mut zip(blocks[i], encrypt(&cb[i], key).expect("unable to encrypt counter block, key length not correct")).map(|(a,b)| a^b).collect::<Vec<u8>>());
     }
-    return y
+    y_blocks
 }
 
 
@@ -161,31 +126,30 @@ pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<
     let key = input_key.unwrap_or(make_key());
     let iv = input_iv.unwrap_or(make_iv(96));
     let h: Vec<u8> = encrypt(&vec![0u8;16], &key).expect("unable to encrypt initial hash block");
-    println!("h: {:02X?}",&h);
-    let mut j_0 = vec![0u8;0];
-    let iv_len_bits = (iv.len() * 8) as f32;
-    if iv_len_bits as u32 == 96{
-        j_0.append(&mut iv.clone());
-        j_0.append(&mut vec![0u8;3]);
-        j_0.push(1);
+    println!("H :{h:02x?}");
+    let mut j_0 = iv.clone();
+    let iv_len_bits = (iv.len() * 8) as u32;
+    if iv_len_bits == 96{
+        j_0.append(&mut vec![0u8,0u8,0u8,1u8]);
     }else{
-        let _s = 128;
-        
-        let s_bits = (128.0 * (iv_len_bits / 128.0).ceil() - iv_len_bits) as usize;
+        let s_bits = (128.0 * ((iv_len_bits as f32) / 128.0).ceil() - iv_len_bits as f32) as usize;
+        println!("s: {s_bits}");
         let mut padded_iv: Vec<u8> = iv.clone();
-        padded_iv.append(&mut vec![0u8;s_bits]);
-        padded_iv.append(&mut (iv.len()).to_be_bytes().to_vec());
-        println!("padded_iv:{padded_iv:02X?} | iv len: {iv_len_bits:02X?}");
+        padded_iv.append(&mut vec![0u8;(s_bits + 64 )/8]);
+        padded_iv.append(&mut (iv_len_bits as u64).to_be_bytes().to_vec());
+        println!("{padded_iv:02x?}");
         j_0 = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), padded_iv).to_be_bytes().to_vec();
     }
     println!("J_0:{:02X?}",&j_0);
     // c is the ciphertext
-    let cipher_text = gctr(&j_0, &plain_text, &key);
+    let pt =  plain_text.clone();
+    println!("pt: {plain_text:02x?}");
+    let cipher_text = gctr(&incr32(&j_0), &pt, &key);
     println!("ct: {cipher_text:02X?}");
     let len_c = cipher_text.len()*8;
     let len_a = aad.len()*8;
-    let u = 128 * ((len_c + 127) / 128) - len_c;
-    let v = 128 * ((len_a + 127) / 128) - len_a;
+    let u = 128 * (len_c as f32 / 128.0).ceil() as usize - len_c;
+    let v = 128 * (len_a as f32/ 128.0).ceil() as usize - len_a;
     println!("u:{u:?} v:{v:?}");
     let mut c_plus_aad = aad.clone();
     c_plus_aad.append(&mut vec![0u8;v]);
@@ -193,9 +157,7 @@ pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<
     c_plus_aad.append(&mut vec![0u8;u]);
     c_plus_aad.append(&mut (aad.len() as u64).to_be_bytes().to_vec());
     c_plus_aad.append(&mut (cipher_text.len() as u64).to_be_bytes().to_vec());
-    println!("hex str: {}", encode_hex_string(&c_plus_aad));
     let s = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), c_plus_aad).to_be_bytes().to_vec();
-    println!("running gctr on s, {}", encode_hex_string(&s));
     let tag = msb(&u128::from_be_bytes(gctr(&j_0,&s , &key).as_slice().try_into().unwrap()), 128 as usize);
     return (iv,cipher_text, tag);
 
