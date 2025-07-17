@@ -12,9 +12,9 @@ fn main(){
     let iv: Vec<u8> = decode_hex_string("36");
     let pt: Vec<u8> = decode_hex_string("6331cd4badf459182ceb3ee120");
     let aad: Vec<u8> = decode_hex_string("a082139c1c90b6de9be9ef2391d7e3a1ff3b66080d15e342ed54c4ccc12f21e3b549b0c38d6e27e7f3cd6d3343681f04761b52a0b39758c498007eb65522a95f9c675311298631592ba8cc11b6b9074a18d5183e3e8306e63d09");
-    
-    let result = gcm_ae(Some(key), Some(iv), pt, aad);
-    println!("iv: {:02x?} | ct: {:02x?} | tag: {:02x?} ", result.0, result.1, result.2);
+    let tag_len = 32usize;
+    let result = gcm_ae(Some(key), Some(iv), pt, aad, tag_len);
+    println!("iv: {:02x?} | ct: {:02x?} | tag: {:02x?}", result.0, result.1, result.2);
 }
 
 
