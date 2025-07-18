@@ -1,20 +1,20 @@
-use crate::{aes::cipher, gcm::{galois_multiplication_2_128, gcm_ae, incr32}, helper::{decode_hex_string, encode_hex_string, xor_vec}};
+use crate::{aes::cipher, gcm::{galois_multiplication_2_128, gcm_ad, gcm_ae, incr32}, helper::{decode_hex_string, encode_hex_string, xor_vec}};
 mod aes;
 mod constants;
 mod helper;
 mod gcm;
 
-
-
-
 fn main(){
-    let key: Vec<u8> = decode_hex_string("11ca26a3e3490f050372301b0d394c8b");
-    let iv: Vec<u8> = decode_hex_string("36");
-    let pt: Vec<u8> = decode_hex_string("6331cd4badf459182ceb3ee120");
-    let aad: Vec<u8> = decode_hex_string("a082139c1c90b6de9be9ef2391d7e3a1ff3b66080d15e342ed54c4ccc12f21e3b549b0c38d6e27e7f3cd6d3343681f04761b52a0b39758c498007eb65522a95f9c675311298631592ba8cc11b6b9074a18d5183e3e8306e63d09");
-    let tag_len = 32usize;
-    let result = gcm_ae(Some(key), Some(iv), pt, aad, tag_len);
-    println!("iv: {:02x?} | ct: {:02x?} | tag: {:02x?}", result.0, result.1, result.2);
+    let key: Vec<u8> = decode_hex_string("CF063A34D4A9a76c2c86787d3f96db71");
+    let iv = decode_hex_string("113b9785971864c83b01c787");
+    let ct = decode_hex_string("a8fe5adbfa");
+    let aad = decode_hex_string("");
+    let tag = decode_hex_string("e04980e9e4c3f200f0c52010d162f9d2");
+    // let (iv, ct, tag) = gcm_ae(Some(key), Some(iv), "hello".to_string().as_bytes().to_vec(), aad, 128);
+    // let orig_calc = gcm_ad(key, iv, ct, tag.to_vec(), aad).expect("unable to authenticate the cipher text");
+    println!("{:?}",String::from_utf8(gcm_ad(key, iv, ct, tag, aad).expect("unable to authenticate tag")).unwrap());
+    
+    // println!("ct:{ct:02x?} \n tag:{tag:02x?}");
 }
 
 
