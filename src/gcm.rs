@@ -1,9 +1,9 @@
 use std::{error::Error, fmt, iter::zip};
 
-use crate::{aes::cipher as encrypt, helper::{encode_hex_string, make_iv, make_key, xor_vec}};
+use crate::{aes::cipher as encrypt, helper::{make_iv, make_key}};
 
 #[derive(Debug, Clone)]
-struct AuthenticationError{
+pub struct AuthenticationError{
     details: String
 }
 #[allow(dead_code)]
@@ -122,10 +122,11 @@ pub fn gctr(icb:&Vec<u8>, x: &Vec<u8>, key:&Vec<u8>)->Vec<u8>{
 
 
 
-pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<u8>, aad:Vec<u8>, tag_len:usize)->(Vec<u8>,Vec<u8>,u128){
+pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<u8>, aad:Vec<u8>, tag_len:usize)->(Vec<u8>,Vec<u8>,Vec<u8>){
     let key = input_key.unwrap_or(make_key());
     let iv = input_iv.unwrap_or(make_iv(96));
     let h: Vec<u8> = encrypt(&vec![0u8;16], &key).expect("unable to encrypt initial hash block");
+    println!("h:{h:02x?}");
     let mut j_0 = iv.clone();
     let iv_len_bits = (iv.len() * 8) as u32;
     if iv_len_bits == 96{
@@ -137,6 +138,7 @@ pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<
         padded_iv.append(&mut (iv_len_bits as u64).to_be_bytes().to_vec());
         j_0 = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), padded_iv).to_be_bytes().to_vec();
     }
+    println!("j_0:{j_0:02x?}");
     // c is the ciphertext
     let pt =  plain_text.clone();
     let cipher_text = gctr(&incr32(&j_0), &pt, &key);
@@ -150,46 +152,51 @@ pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<
     c_plus_aad.append(&mut vec![0u8;u/8]);
     c_plus_aad.append(&mut (len_a as u64).to_be_bytes().to_vec());
     c_plus_aad.append(&mut (len_c as u64).to_be_bytes().to_vec());
+    println!("c_plus_aad{c_plus_aad:02x?}");
     let s = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), c_plus_aad).to_be_bytes().to_vec();
-    let tag = msb(&u128::from_be_bytes(gctr(&j_0,&s , &key).as_slice().try_into().unwrap()), tag_len );
+    println!("s:{s:02x?}");
+    let mut tag = msb(&u128::from_be_bytes(gctr(&j_0,&s , &key).as_slice().try_into().unwrap()), tag_len).to_be_bytes().to_vec();
+    // basically we are given all the bits of a u128 number, it may be the case that we don't need all the bits (i.e. tag len < 128)
+    // so here we try to get only what we need
+    if tag_len < 128{
+        tag = tag[tag.len()-tag_len/8..].to_vec();
+    }
+    
     return (iv,cipher_text, tag);
 
 }
 
 
-pub fn gcm_ad(key:Vec<u8>, iv:Vec<u8>, cipher_text:Vec<u8>, tag:u128, aad:Vec<u8> )->Result<Vec<u8>, AuthenticationError>{
-    let mut iv_copy = iv.clone();
+pub fn gcm_ad(key:Vec<u8>, iv:Vec<u8>, cipher_text:Vec<u8>, tag:Vec<u8>, aad:Vec<u8> )->Result<Vec<u8>, AuthenticationError>{
     let mut c = cipher_text.clone();
-    
-    
     let h = encrypt(&vec![0u8;16], &key).expect("unable to encrypt initial hash block") ;
-    let mut j_0 = vec![0u8;0];
-    
-    if iv.len() == 12{
-        j_0.append(&mut iv_copy);
-        j_0.append(&mut vec![0u8;3]);
-        j_0.push(1);
+    println!("h:{h:02x?}");
+    let mut j_0 = iv.clone();
+    let iv_len_bits = (iv.len() * 8) as u32;
+    if iv_len_bits == 96{
+        j_0.append(&mut vec![0u8,0u8,0u8,1u8]);
     }else{
-        let _s = 128;
-        let iv_len_bits = (iv.len() * 8) as f32;
-        let s_bits = (128.0 * (iv_len_bits / 128.0).ceil() - iv_len_bits) as usize;
+        let s_bits = (128.0 * ((iv_len_bits as f32) / 128.0).ceil() - iv_len_bits as f32) as usize;
         let mut padded_iv: Vec<u8> = iv.clone();
-        padded_iv.append(&mut vec![0u8;s_bits]);
-        padded_iv.append(&mut (iv.len()).to_be_bytes().to_vec());
+        padded_iv.append(&mut vec![0u8;(s_bits + 64 )/8]);
+        padded_iv.append(&mut (iv_len_bits as u64).to_be_bytes().to_vec());
         j_0 = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), padded_iv).to_be_bytes().to_vec();
     }
-    let p = gctr(&j_0, &cipher_text, &key);
-    let u = ((cipher_text.len()*8) % 128)/16;
-    let v = ((aad.len() * 8) % 128)/16;
+    let p = gctr(&incr32(&j_0), &cipher_text, &key);
+    let len_c = cipher_text.len()*8;
+    let len_a = aad.len()*8;
+    let u = 128 * (len_c as f32 / 128.0).ceil() as usize - len_c;
+    let v = 128 * (len_a as f32/ 128.0).ceil() as usize - len_a;
     let mut c_plus_aad = aad.clone();
-    c_plus_aad.append(&mut vec![0u8;u]);
+    c_plus_aad.append(&mut vec![0u8;v/8]);
     c_plus_aad.append(&mut c);
-    c_plus_aad.append(&mut vec![0u8;v]);
-
-    let s = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), c_plus_aad);
-    let b = &s.to_be_bytes().to_vec();
-    let t_dash = msb(&u128::from_be_bytes(gctr(&j_0,b , &key).as_slice().try_into().unwrap()), 128 as usize);
-    if t_dash == tag{
+    c_plus_aad.append(&mut vec![0u8;u/8]);
+    c_plus_aad.append(&mut (len_a as u64).to_be_bytes().to_vec());
+    c_plus_aad.append(&mut (len_c as u64).to_be_bytes().to_vec());
+    let s = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), c_plus_aad).to_be_bytes().to_vec();
+    let t_dash = msb(&u128::from_be_bytes(gctr(&j_0,&s , &key).as_slice().try_into().unwrap()), tag.len()*8).to_be_bytes();
+    
+    if t_dash[t_dash.len()-tag.len()..] == *tag.as_slice(){
         return Ok(p);
     }
     return  Err(AuthenticationError::new("FAILED to authenticate the tag"));
