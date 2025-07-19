@@ -69,7 +69,7 @@ pub fn galois_multiplication_2_128(x:u128,y:u128)->u128{
 }
 
 
-pub fn ghash(h_block:u128, string_x:Vec<u8>)->u128{
+pub fn ghash(h_block:u128, string_x:&Vec<u8>)->u128{
     let pad_len = if string_x.len() % 16 == 0 {
         0  // No padding needed if already multiple of 16
     } else {
@@ -122,8 +122,8 @@ pub fn gctr(icb:&Vec<u8>, x: &Vec<u8>, key:&Vec<u8>)->Vec<u8>{
 
 
 
-pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<u8>, aad:Vec<u8>, tag_len:usize)->(Vec<u8>,Vec<u8>,Vec<u8>){
-    let key = input_key.unwrap_or(make_key());
+pub fn gcm_ae(input_key:Vec<u8>,input_iv:Option<Vec<u8>>,plain_text:Vec<u8>, aad:&Vec<u8>, tag_len:usize)->(Vec<u8>,Vec<u8>,Vec<u8>){
+    let key = input_key;
     let iv = input_iv.unwrap_or(make_iv(96));
     let h: Vec<u8> = encrypt(&vec![0u8;16], &key).expect("unable to encrypt initial hash block");
     let mut j_0 = iv.clone();
@@ -135,7 +135,7 @@ pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<
         let mut padded_iv: Vec<u8> = iv.clone();
         padded_iv.append(&mut vec![0u8;(s_bits + 64 )/8]);
         padded_iv.append(&mut (iv_len_bits as u64).to_be_bytes().to_vec());
-        j_0 = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), padded_iv).to_be_bytes().to_vec();
+        j_0 = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), &padded_iv).to_be_bytes().to_vec();
     }
     
     let pt =  plain_text.clone();
@@ -144,13 +144,13 @@ pub fn gcm_ae(input_key:Option<Vec<u8>>,input_iv:Option<Vec<u8>>,plain_text:Vec<
     let len_a = aad.len()*8;
     let u = 128 * (len_c as f32 / 128.0).ceil() as usize - len_c;
     let v = 128 * (len_a as f32/ 128.0).ceil() as usize - len_a;
-    let mut c_plus_aad = aad;
+    let mut c_plus_aad = aad.clone();
     c_plus_aad.append(&mut vec![0u8;v/8]);
     c_plus_aad.append(&mut cipher_text.clone());
     c_plus_aad.append(&mut vec![0u8;u/8]);
     c_plus_aad.append(&mut (len_a as u64).to_be_bytes().to_vec());
     c_plus_aad.append(&mut (len_c as u64).to_be_bytes().to_vec());
-    let s = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), c_plus_aad).to_be_bytes().to_vec();
+    let s = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), &c_plus_aad).to_be_bytes().to_vec();
     let mut tag = msb(&u128::from_be_bytes(gctr(&j_0,&s , &key).as_slice().try_into().unwrap()), tag_len).to_be_bytes().to_vec();
     // basically we are given all the bits of a u128 number, it may be the case that we don't need all the bits (i.e. tag len < 128)
     // so here we try to get only what we need
@@ -177,7 +177,7 @@ pub fn gcm_ad(key:Vec<u8>, iv:Vec<u8>, cipher_text:Vec<u8>, tag:Vec<u8>, aad:Vec
         let mut padded_iv: Vec<u8> = iv.clone();
         padded_iv.append(&mut vec![0u8;(s_bits + 64 )/8]);
         padded_iv.append(&mut (iv_len_bits as u64).to_be_bytes().to_vec());
-        j_0 = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), padded_iv).to_be_bytes().to_vec();
+        j_0 = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), &padded_iv).to_be_bytes().to_vec();
     }
     let p = gctr(&incr32(&j_0), &cipher_text, &key);
     let len_c = cipher_text.len()*8;
@@ -190,7 +190,7 @@ pub fn gcm_ad(key:Vec<u8>, iv:Vec<u8>, cipher_text:Vec<u8>, tag:Vec<u8>, aad:Vec
     c_plus_aad.append(&mut vec![0u8;u/8]);
     c_plus_aad.append(&mut (len_a as u64).to_be_bytes().to_vec());
     c_plus_aad.append(&mut (len_c as u64).to_be_bytes().to_vec());
-    let s = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), c_plus_aad).to_be_bytes().to_vec();
+    let s = ghash(u128::from_be_bytes(h.as_slice().try_into().unwrap()), &c_plus_aad).to_be_bytes().to_vec();
     let t_dash: [u8;16] = msb(&u128::from_be_bytes(gctr(&j_0,&s , &key).as_slice().try_into().unwrap()), tag.len()*8).to_be_bytes();
     let t_dash = if tag.len()< 128{
         t_dash[t_dash.len()-tag.len()..].to_vec()
