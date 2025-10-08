@@ -2,3 +2,5 @@
 **/.vscode
 Cargo.lock
 **/.test_vectors/*
+**/gcmtestvectors/*
+**.DS_Store
