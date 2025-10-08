@@ -1,20 +1,42 @@
-use crate::{aes::cipher, gcm::{galois_multiplication_2_128, gcm_ad, gcm_ae, incr32}, helper::{decode_hex_string, encode_hex_string, xor_vec}};
+use std::{fs, io::Read};
+
+use crate::{gcm::{gcm_ad, gcm_ae}, helper::{decode_hex_string}};
 mod aes;
 mod constants;
 mod helper;
 mod gcm;
+use std::env;
+
+
+fn print_help_message(){
+    println!("Using the AES command line program");
+    println!("example command: aes_cli --enc some_key_bytes some_data_bytes");
+    println!();
+    println!("If you want the tool to generate a key for you, supply \'NO_KEY\' in place of the some_key_bytes");
+
+}
+
 
 fn main(){
-    let key: Vec<u8> = decode_hex_string("CF063A34D4A9a76c2c86787d3f96db71");
-    let iv = decode_hex_string("113b9785971864c83b01c787");
-    let ct = decode_hex_string("a8fe5adbfa");
-    let aad = decode_hex_string("");
-    let tag = decode_hex_string("e04980e9e4c3f200f0c52010d162f9d2");
-    // let (iv, ct, tag) = gcm_ae(Some(key), Some(iv), "hello".to_string().as_bytes().to_vec(), aad, 128);
-    // let orig_calc = gcm_ad(key, iv, ct, tag.to_vec(), aad).expect("unable to authenticate the cipher text");
-    println!("{:?}",String::from_utf8(gcm_ad(key, iv, ct, tag, aad).expect("unable to authenticate tag")).unwrap());
-    
-    // println!("ct:{ct:02x?} \n tag:{tag:02x?}");
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 1 || args.contains(&"--help".to_string()){
+        print_help_message();
+    }
+    let cipher_mode = (args[1]).clone();
+
+    if cipher_mode != "enc" && cipher_mode != "dec"{
+        println!("The first argument must be either \'enc\' or \'dec\'");
+    }
+
+    let key = (args[2]).clone();
+    if key != "NO_KEY"{
+        // ensure the key is either 128 196 and 256 bits
+        
+    }
+    println!("{cipher_mode}");
+
+
+
 }
 
 
