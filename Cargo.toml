@@ -3,5 +3,10 @@ name = "aes"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+edition = "2021"
+name = "aes_cli"
+path = "src/main.rs"
+
 [dependencies]
 rand = "0.9.1"
